@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Neon Breakout — built from one prompt</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #0a0a14; height: 100%; overflow: hidden; }
+  body { font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace; }
+  #bar {
+    height: 84px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 48px; color: #fff; background: #0d0d1a; border-bottom: 2px solid #23233a;
+  }
+  #bar .title { font-size: 34px; font-weight: 700; letter-spacing: 2px; }
+  #bar .title b { color: #ff2d78; }
+  #bar .hud { font-size: 30px; color: #7df9ff; }
+  #bar .hud span { color: #ffd319; }
+  canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <div class="title">NEON <b>BREAKOUT</b></div>
+  <div class="hud">SCORE <span id="score">0</span> &nbsp;&nbsp; BRICKS <span id="bricks">0</span></div>
+</div>
+<canvas id="game" width="1920" height="996"></canvas>
+<script>
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+const scoreEl = document.getElementById('score');
+const bricksEl = document.getElementById('bricks');
+
+// Paddle (autopilot: follows the ball with a little lag, so it plays itself)
+const paddle = { w: 260, h: 26, x: W / 2 - 130, y: H - 60, speed: 0 };
+// Ball
+const ball = { x: W / 2, y: H - 120, r: 16, dx: 7, dy: -8 };
+let score = 0;
+let trail = [];
+
+const ROWS = 6, COLS = 12;
+const BW = 138, BH = 42, GAP = 14, TOP = 60, LEFT = (W - (COLS * (BW + GAP) - GAP)) / 2;
+const COLORS = ['#ff2d78', '#ff9f1c', '#ffd319', '#7df9ff', '#2de2ff', '#b967ff'];
+let bricks = [];
+function buildBricks() {
+  bricks = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      bricks.push({ x: LEFT + c * (BW + GAP), y: TOP + r * (BH + GAP), w: BW, h: BH, color: COLORS[r], alive: true });
+    }
+  }
+}
+buildBricks();
+
+function resetBall() {
+  ball.x = W / 2; ball.y = H - 140;
+  ball.dx = (Math.random() > 0.5 ? 1 : -1) * 7;
+  ball.dy = -8;
+  trail = [];
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  // bricks
+  for (const b of bricks) {
+    if (!b.alive) continue;
+    ctx.fillStyle = b.color;
+    ctx.shadowColor = b.color; ctx.shadowBlur = 22;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+  }
+  ctx.shadowBlur = 0;
+  // trail
+  for (let i = 0; i < trail.length; i++) {
+    const t = trail[i];
+    ctx.globalAlpha = (i / trail.length) * 0.35;
+    ctx.fillStyle = '#7df9ff';
+    ctx.beginPath(); ctx.arc(t.x, t.y, ball.r * (i / trail.length), 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // ball
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = 30;
+  ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  // paddle
+  ctx.fillStyle = '#ff2d78';
+  ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 26;
+  ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+  ctx.shadowBlur = 0;
+}
+
+function step() {
+  // autopilot: chase the ball, with lag so it looks human
+  const target = ball.x - paddle.w / 2;
+  paddle.x += (target - paddle.x) * 0.12;
+  if (paddle.x < 0) paddle.x = 0;
+  if (paddle.x > W - paddle.w) paddle.x = W - paddle.w;
+
+  ball.x += ball.dx; ball.y += ball.dy;
+  trail.push({ x: ball.x, y: ball.y });
+  if (trail.length > 14) trail.shift();
+
+  if (ball.x - ball.r < 0 || ball.x + ball.r > W) ball.dx = -ball.dx;
+  if (ball.y - ball.r < 0) ball.dy = -ball.dy;
+  if (ball.y - ball.r > H) { resetBall(); return; }
+
+  // paddle hit
+  if (ball.dy > 0 && ball.y + ball.r >= paddle.y && ball.y + ball.r <= paddle.y + paddle.h + 14 &&
+      ball.x >= paddle.x && ball.x <= paddle.x + paddle.w) {
+    const hit = (ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2);
+    ball.dy = -Math.abs(ball.dy);
+    ball.dx = hit * 9;
+    ball.y = paddle.y - ball.r - 1;
+  }
+  // brick hits
+  for (const b of bricks) {
+    if (!b.alive) continue;
+    if (ball.x + ball.r > b.x && ball.x - ball.r < b.x + b.w &&
+        ball.y + ball.r > b.y && ball.y - ball.r < b.y + b.h) {
+      b.alive = false;
+      score += 10;
+      scoreEl.textContent = score;
+      ball.dy = -ball.dy;
+      break;
+    }
+  }
+  const left = bricks.filter(b => b.alive).length;
+  bricksEl.textContent = left;
+  if (left === 0) { buildBricks(); resetBall(); }
+}
+
+function loop() {
+  step();
+  draw();
+  requestAnimationFrame(loop);
+}
+bricksEl.textContent = bricks.length;
+loop();
+</script>
+</body>
+</html>
